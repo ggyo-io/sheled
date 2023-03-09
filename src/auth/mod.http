@@ -1,0 +1,36 @@
+POST http://localhost:3030/signup HTTP/1.1
+content-type: application/json
+
+{
+    "name": "sample",
+    "email": "someone@somewhere4.com",
+    "password": "password"
+}
+
+###
+POST http://localhost:3030/login HTTP/1.1
+content-type: application/json
+
+{
+    "email": "someone@somewhere4.com",
+    "password": "password"
+}
+
+###
+POST http://localhost:3030/login HTTP/1.1
+content-type: application/json
+
+{
+    "email": "someone@somewhere4.com",
+    "password": "passord"
+}
+
+###
+GET http://localhost:3030/auth HTTP/1.1
+
+###
+GET http://localhost:3030/ HTTP/1.0
+Cookie: token=lala
+
+###
+GET http://localhost:3030/auth/static/js/main.8a2830d3.js

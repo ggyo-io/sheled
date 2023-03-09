@@ -1,0 +1,22 @@
+[package]
+name = "sheled"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.0", features = ["fs", "sync", "time", "macros", "rt-multi-thread"] }
+tokio-stream = "0.1.1"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+pretty_env_logger = "0.4"
+warp = "0.3.3"
+sqlx = { version = "0.6", features = [ "runtime-tokio-rustls", "postgres" ] }
+tracing-subscriber = "0.2.7"
+thiserror = "1.0.38"
+sqlb = "0.0.8"
+jsonwebtoken = "8.2.0"
+serde = "1.0.152"
+md5 = "0.7.0"
+rand = "0.8.5"
+hex = "0.4.3"
