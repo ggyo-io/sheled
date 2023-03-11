@@ -19,6 +19,8 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Start postgres
-      run: docker run --rm -p 5432:5432 -e "POSTGRES_PASSWORD=postgres" --name pg postgres:15
+      run: docker run -d --rm -p 5432:5432 -e "POSTGRES_PASSWORD=postgres" --name pg postgres:15
     - name: Run tests
       run: cargo test --verbose
+    - name: Stop postgres
+      run: docker stop pg
