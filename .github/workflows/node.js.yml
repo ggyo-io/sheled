@@ -22,6 +22,8 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
+        cache-dependency-path: |
+          frontend-auth/package-lock.json
     - run: |
         cd frontend-auth
         npm ci
