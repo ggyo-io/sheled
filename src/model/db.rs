@@ -36,7 +36,6 @@ pub async fn init_db() -> Result<Db, sqlx::Error> {
 
     let app_db = new_db_pool(PG_HOST, PG_DB, PG_USER, PG_PASS, 1).await?;
     let mut paths: Vec<PathBuf> = fs::read_dir(SQL_DIR)?
-        .into_iter()
         .filter_map(|e| e.ok().map(|e| e.path()))
         .collect();
     paths.sort();
