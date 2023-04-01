@@ -1,16 +1,12 @@
 use super::db::Db;
 use crate::model;
 use sqlb::HasFields;
-use entity::Entity;
+use entity::{Entity, EM};
 
 #[derive(sqlx::FromRow, Debug, Clone, Entity)]
 pub struct Key {
     pub id: i64,
     pub key: String,
-}
-
-fn table() -> &'static str {
-    Key::entity().entity
 }
 
 #[derive(sqlb::Fields, Default, Debug, Clone)]
@@ -24,9 +20,9 @@ impl KeyMac {
     pub async fn create(db: &Db, data: &KeyPatch) -> Result<Key, model::Error> {
 
         let sb = sqlb::insert()
-            .table(table())
+            .table(Key::entity())
             .data(data.fields())
-            .returning(&Key::entity().columns);
+            .returning(Key::columns());
         let game = sb.fetch_one(db).await?;
         Ok(game)
     }
@@ -34,9 +30,9 @@ impl KeyMac {
 
     pub async fn get_last(db: &Db) -> Result<Key, model::Error> {
         let sb = sqlb::select()
-            .table(table())
+            .table(Key::entity())
             .order_by("!id")
-            .columns(&Key::entity().columns);
+            .columns(Key::columns());
         let key = sb.fetch_one(db).await?;
         Ok(key)
     }
@@ -47,6 +43,7 @@ mod tests {
     use crate::model::db::init_db;
     use super::{KeyMac, KeyPatch};
     use crate::auth::jwt::{random_key, current_key};
+    use entity::EM;
 /*
 cargo watch -q -c -w src -x 'test model_key_ -- --nocapture --test-threads=1'
  */
@@ -84,15 +81,9 @@ cargo watch -q -c -w src -x 'test model_key_ -- --nocapture --test-threads=1'
     fn model_key_entity() {
         use crate::model::keys::Key;
 
-        let key = Key{ id: 17, key: "key".into()};
-        let kem = Key::entity();
-        println!("\n--> key {:?} entity model {:?}", key, kem);
-
-        assert_eq!(kem.entity, "keys");
-        assert_eq!(kem.columns.len(), 2);
-        assert_eq!(kem.columns, vec!["id", "key"]);
-        assert_eq!(kem.tys.len(), 2);
-        assert_eq!(kem.tys, vec!["i64", "String"]);
+        assert_eq!(Key::entity(), "keys");
+        assert_eq!(Key::columns(), &["id", "key"]);
+        assert_eq!(Key::tys(), &["i64", "String"]);
     }
 
 }

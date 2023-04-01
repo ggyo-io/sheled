@@ -1,7 +1,7 @@
 use super::db::Db;
 use crate::model;
 use sqlb::HasFields;
-use entity::Entity;
+use entity::{Entity, EM};
 
 #[derive(sqlx::FromRow, Debug, Clone, Entity)]
 pub struct User {
@@ -9,10 +9,6 @@ pub struct User {
     pub name: String,
     pub email: String,
     pub hash: String,
-}
-
-fn table() -> &'static str {
-    User::entity().entity
 }
 
 #[derive(sqlb::Fields, Default, Debug, Clone)]
@@ -28,9 +24,9 @@ impl UserMac {
     pub async fn create(db: &Db, data: UserPatch) -> Result<User, model::Error>{
 
         let sb = sqlb::insert()
-            .table(table())
+            .table(User::entity())
             .data(data.fields())
-            .returning(&User::entity().columns);
+            .returning(User::columns());
         let user = sb.fetch_one(db).await?;
         Ok(user)
     }
@@ -38,7 +34,7 @@ impl UserMac {
 /*
     pub async fn get(db: &Db, id: i64) -> Result<User, model::Error> {
         let sb = sqlb::select()
-            .table(table())
+            .table(User::entity())
             .and_where_eq("id", id)
             .columns(&User::entity().columns);
         let user = sb.fetch_one(db).await?;
@@ -48,9 +44,9 @@ impl UserMac {
 
     pub async fn get_by_email(db: &Db, email: &str) -> Result<User, model::Error> {
         let sb = sqlb::select()
-            .table(table())
+            .table(User::entity())
             .and_where_eq("email", email)
-            .columns(&User::entity().columns);
+            .columns(User::columns());
         let user = sb.fetch_one(db).await?;
         Ok(user)
     }
@@ -58,7 +54,7 @@ impl UserMac {
 /*
     pub async fn update(db: &Db, id: i64, data:UserPatch) -> Result<User, model::Error> {
         let sb = sqlb::update()
-            .table(table())
+            .table(User::entity())
             .data(data.fields())
             .and_where_eq("id", id)
             .returning(&User::entity().columns);
@@ -69,7 +65,7 @@ impl UserMac {
 
     pub async fn list(db: &Db) -> Result<Vec<User>, model::Error> {
 
-        let sb = sqlb::select().table(table()).columns(&User::entity().columns);
+        let sb = sqlb::select().table(User::entity()).columns(&User::entity().columns);
         let users = sb.fetch_all(db).await?;
 
         Ok(users)

@@ -39,6 +39,8 @@ fn get_entity_field(field: &Field) -> Option<EntityField> {
     Some(entity_field)
 }
 
+// Convert struct name, for instance 'User', into to 'users'
+// used as SQL table name
 fn ident_to_entity_name(ident: syn::Ident) -> String {
     let mut s = ident.to_string();
     let first_char = s.chars().next().unwrap().to_lowercase().next().unwrap();
@@ -69,9 +71,15 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let tys: Vec<String> = entity.fields.iter().map(|f| f.ty.to_string()).collect();
 
     let result = quote! {
-        impl #ident {
-            pub fn entity() -> ::entity::EntityModel {
-                ::entity::EntityModel { entity: #entity_name, columns: vec![#(#fields),*], tys: vec![#(#tys),*] }
+        impl ::entity::EM for #ident {
+            fn entity() -> &'static str {
+                #entity_name
+            }
+            fn columns() -> &'static [&'static str] {
+                &[#(#fields),*]
+            }
+            fn tys() -> &'static [&'static str] {
+                &[#(#tys),*]
             }
         }
     };
