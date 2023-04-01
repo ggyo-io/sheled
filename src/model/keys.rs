@@ -1,11 +1,16 @@
 use super::db::Db;
 use crate::model;
 use sqlb::HasFields;
+use entity::Entity;
 
-#[derive(sqlx::FromRow, Debug, Clone)]
+#[derive(sqlx::FromRow, Debug, Clone, Entity)]
 pub struct Key {
     pub id: i64,
     pub key: String,
+}
+
+fn table() -> &'static str {
+    Key::entity().entity
 }
 
 #[derive(sqlb::Fields, Default, Debug, Clone)]
@@ -15,16 +20,13 @@ pub struct KeyPatch {
 
 pub struct KeyMac;
 
-const TABLE: &str = "keys";
-const COLUMNS: & [&str] = &["id", "key"];
-
 impl KeyMac {
     pub async fn create(db: &Db, data: &KeyPatch) -> Result<Key, model::Error> {
 
         let sb = sqlb::insert()
-            .table(TABLE)
+            .table(table())
             .data(data.fields())
-            .returning(COLUMNS);
+            .returning(&Key::entity().columns);
         let game = sb.fetch_one(db).await?;
         Ok(game)
     }
@@ -32,9 +34,9 @@ impl KeyMac {
 
     pub async fn get_last(db: &Db) -> Result<Key, model::Error> {
         let sb = sqlb::select()
-            .table(TABLE)
+            .table(table())
             .order_by("!id")
-            .columns(COLUMNS);
+            .columns(&Key::entity().columns);
         let key = sb.fetch_one(db).await?;
         Ok(key)
     }
@@ -77,5 +79,20 @@ cargo watch -q -c -w src -x 'test model_key_ -- --nocapture --test-threads=1'
   
         Ok(())
     }    
+
+    #[test]
+    fn model_key_entity() {
+        use crate::model::keys::Key;
+
+        let key = Key{ id: 17, key: "key".into()};
+        let kem = Key::entity();
+        println!("\n--> key {:?} entity model {:?}", key, kem);
+
+        assert_eq!(kem.entity, "keys");
+        assert_eq!(kem.columns.len(), 2);
+        assert_eq!(kem.columns, vec!["id", "key"]);
+        assert_eq!(kem.tys.len(), 2);
+        assert_eq!(kem.tys, vec!["i64", "String"]);
+    }
 
 }

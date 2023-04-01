@@ -1,11 +1,16 @@
 use super::db::Db;
 use crate::model;
 use sqlb::HasFields;
+use entity::Entity;
 
-#[derive(sqlx::FromRow, Debug, Clone)]
+#[derive(sqlx::FromRow, Debug, Clone, Entity)]
 pub struct Game {
     pub id: i64,
     pub pgn: String,
+}
+
+fn table() -> &'static str {
+    Game::entity().entity
 }
 
 #[derive(sqlb::Fields, Default, Debug, Clone)]
@@ -15,16 +20,13 @@ pub struct GamePatch {
 
 pub struct GameMac;
 
-const TABLE: &str = "games";
-const COLUMNS: & [&str] = &["id", "pgn"];
-
 impl GameMac {
     pub async fn create(db: &Db, data: GamePatch) -> Result<Game, model::Error> {
 
         let sb = sqlb::insert()
-            .table(TABLE)
+            .table(table())
             .data(data.fields())
-            .returning(COLUMNS);
+            .returning(&Game::entity().columns);
         let game = sb.fetch_one(db).await?;
         Ok(game)
     }
@@ -32,9 +34,9 @@ impl GameMac {
 /*
     pub async fn get(db: &Db, id: i64) -> Result<Game, model::Error> {
         let sb = sqlb::select()
-            .table(TABLE)
+            .table(table())
             .and_where_eq("id", id)
-            .columns(COLUMNS);
+            .columns(&Game::entity().columns);
         let game = sb.fetch_one(db).await?;
         Ok(game)
     }
@@ -42,10 +44,10 @@ impl GameMac {
 
     pub async fn update(db: &Db, id: i64, data:GamePatch) -> Result<Game, model::Error> {
         let sb = sqlb::update()
-            .table(TABLE)
+            .table(table())
             .data(data.fields())
             .and_where_eq("id", id)
-            .returning(COLUMNS);
+            .returning(&Game::entity().columns);
         let game = sb.fetch_one(db).await?;
         Ok(game)
     }
@@ -53,7 +55,7 @@ impl GameMac {
 
     pub async fn list(db: &Db) -> Result<Vec<Game>, model::Error> {
 
-        let sb = sqlb::select().table(TABLE).columns(COLUMNS);
+        let sb = sqlb::select().table(table()).columns(&Game::entity().columns);
         let games = sb.fetch_all(db).await?;
 
         Ok(games)

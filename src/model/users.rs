@@ -1,13 +1,18 @@
 use super::db::Db;
 use crate::model;
 use sqlb::HasFields;
+use entity::Entity;
 
-#[derive(sqlx::FromRow, Debug, Clone)]
+#[derive(sqlx::FromRow, Debug, Clone, Entity)]
 pub struct User {
     pub id: i64,
     pub name: String,
     pub email: String,
     pub hash: String,
+}
+
+fn table() -> &'static str {
+    User::entity().entity
 }
 
 #[derive(sqlb::Fields, Default, Debug, Clone)]
@@ -19,16 +24,13 @@ pub struct UserPatch {
 
 pub struct UserMac;
 
-const TABLE: &str = "users";
-const COLUMNS: & [&str] = &["id", "name", "email", "hash"];
-
 impl UserMac {
     pub async fn create(db: &Db, data: UserPatch) -> Result<User, model::Error>{
 
         let sb = sqlb::insert()
-            .table(TABLE)
+            .table(table())
             .data(data.fields())
-            .returning(COLUMNS);
+            .returning(&User::entity().columns);
         let user = sb.fetch_one(db).await?;
         Ok(user)
     }
@@ -36,9 +38,9 @@ impl UserMac {
 /*
     pub async fn get(db: &Db, id: i64) -> Result<User, model::Error> {
         let sb = sqlb::select()
-            .table(TABLE)
+            .table(table())
             .and_where_eq("id", id)
-            .columns(COLUMNS);
+            .columns(&User::entity().columns);
         let user = sb.fetch_one(db).await?;
         Ok(user)
     }
@@ -46,9 +48,9 @@ impl UserMac {
 
     pub async fn get_by_email(db: &Db, email: &str) -> Result<User, model::Error> {
         let sb = sqlb::select()
-            .table(TABLE)
+            .table(table())
             .and_where_eq("email", email)
-            .columns(COLUMNS);
+            .columns(&User::entity().columns);
         let user = sb.fetch_one(db).await?;
         Ok(user)
     }
@@ -56,10 +58,10 @@ impl UserMac {
 /*
     pub async fn update(db: &Db, id: i64, data:UserPatch) -> Result<User, model::Error> {
         let sb = sqlb::update()
-            .table(TABLE)
+            .table(table())
             .data(data.fields())
             .and_where_eq("id", id)
-            .returning(COLUMNS);
+            .returning(&User::entity().columns);
         let user = sb.fetch_one(db).await?;
         Ok(user)
     }
@@ -67,7 +69,7 @@ impl UserMac {
 
     pub async fn list(db: &Db) -> Result<Vec<User>, model::Error> {
 
-        let sb = sqlb::select().table(TABLE).columns(COLUMNS);
+        let sb = sqlb::select().table(table()).columns(&User::entity().columns);
         let users = sb.fetch_all(db).await?;
 
         Ok(users)
