@@ -121,7 +121,7 @@ pub fn random_key() -> String {
 }
 
 pub async fn current_key(db: &Db) -> Result<TokenSecret, Error> {
-    match KeyMac::get_last(&db).await {
+    match KeyMac::get_last(db).await {
         Ok(k) => {
             let token = hex::decode(&k.key)?.into();
             println!("\n--> found old key {:?}", k);
@@ -129,7 +129,7 @@ pub async fn current_key(db: &Db) -> Result<TokenSecret, Error> {
         }
         Err(_e) => {
             let new_key = random_key();
-            let result = KeyMac::create(&db, &KeyPatch { key: Some(new_key.to_owned()) }).await?;
+            let result = KeyMac::create(db, &KeyPatch { key: Some(new_key.to_owned()) }).await?;
             println!("\n--> create new key {:?}", result);
             let token = hex::decode(new_key)?.into();
 

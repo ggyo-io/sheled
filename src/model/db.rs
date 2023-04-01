@@ -44,7 +44,7 @@ pub async fn init_db() -> Result<Db, sqlx::Error> {
     for path in paths {
         if let Some(path) = path.to_str() {
             if path.ends_with(".sql") /* &&  path != SQL_RECREATE */ {
-                pexec(&app_db, &path).await?
+                pexec(&app_db, path).await?
             }
         }
     }
@@ -58,10 +58,10 @@ async fn pexec(db: &Db, file: &str) -> Result<(), sqlx::Error> {
         ex
     })?;
 
-    let sqls: Vec<&str> = content.split(";").collect();
+    let sqls: Vec<&str> = content.split(';').collect();
 
     for sql in sqls {
-        match sqlx::query(&sql).execute(db).await {
+        match sqlx::query(sql).execute(db).await {
             Ok(_) => (),
             Err(ex) => {
                 println!("Error executing sql {}, {}", sql, ex);

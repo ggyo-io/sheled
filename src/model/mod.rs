@@ -10,13 +10,13 @@ pub mod keys;
 #[derive(ThisError, Debug)]
 pub enum Error {
     #[error(transparent)]
-    SqlxError(#[from] sqlx::Error),
+    Sqlx(#[from] sqlx::Error),
 
     #[error(transparent)]
-    IOError(#[from] std::io::Error),
+    IO(#[from] std::io::Error),
 
     #[error(transparent)]
-    HexDecodeError(#[from] FromHexError),
+    HexDecode(#[from] FromHexError),
 }
 
 // error[E0277]: the trait bound `model::Error: warp::reject::Reject` is not satisfied

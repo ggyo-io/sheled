@@ -34,7 +34,7 @@ fn token_reply(token: &str) -> Result<impl warp::Reply, warp::Rejection> {
         format!("token={}; HttpOnly", token),
     );
 
-    return Ok(with_token);
+    Ok(with_token)
 }
 
 pub async fn signup(token_secret: MasterTokenSecret, db: Db, user: UserSignup) -> Result<impl warp::Reply, warp::Rejection> {
@@ -86,5 +86,5 @@ pub async fn login(token_secret: MasterTokenSecret, db: Db, user: UserLogin) -> 
     let token = jwt::from_utx(&claim, token_secret).await;
     println!("\n--> token {:?}", token);
 
-    return token_reply(&token);
+    token_reply(&token)
 }
