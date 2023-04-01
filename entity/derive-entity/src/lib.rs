@@ -6,7 +6,7 @@ use syn::{
 };
 
 struct Entity {
-    name: &'static str,
+    name: String,
     fields: Vec<EntityField>,
 }
 
@@ -39,12 +39,12 @@ fn get_entity_field(field: &Field) -> Option<EntityField> {
     Some(entity_field)
 }
 
-fn ident_to_entity_name(ident: syn::Ident) -> &'static str {
+fn ident_to_entity_name(ident: syn::Ident) -> String {
     let mut s = ident.to_string();
     let first_char = s.chars().next().unwrap().to_lowercase().next().unwrap();
     s.replace_range(0..1, &first_char.to_string());
     s.push('s');
-    Box::leak(s.into_boxed_str())
+    s
 }
 
 #[proc_macro_derive(Entity)]
