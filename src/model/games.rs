@@ -1,104 +1,65 @@
 use super::db::Db;
 use crate::model;
-use sqlb::HasFields;
-use entity::{Entity, EM};
+use sea_orm::entity::prelude::*;
+use sea_orm::*;
 
-#[derive(sqlx::FromRow, Debug, Clone, Entity)]
-pub struct Game {
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "games")]
+pub struct Model {
+    #[sea_orm(primary_key)]
     pub id: i64,
     pub pgn: String,
 }
 
-#[derive(sqlb::Fields, Default, Debug, Clone)]
-pub struct GamePatch {
-    pub pgn: Option<String>,
-}
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
 
 pub struct GameMac;
 
 impl GameMac {
-    pub async fn create(db: &Db, data: GamePatch) -> Result<Game, model::Error> {
+    pub async fn create(db: &Db, data: &str) -> Result<i64, model::Error> {
+        let game = ActiveModel {
+            pgn: Set(data.to_owned()),
+            ..Default::default()
+        };
+        let res = Entity::insert(game).exec(db).await?;
 
-        let sb = sqlb::insert()
-            .table(Game::entity())
-            .data(data.fields())
-            .returning(Game::columns());
-        let game = sb.fetch_one(db).await?;
-        Ok(game)
+        Ok(res.last_insert_id)
     }
 
-/*
-    pub async fn get(db: &Db, id: i64) -> Result<Game, model::Error> {
-        let sb = sqlb::select()
-            .table(Game::entity())
-            .and_where_eq("id", id)
-            .columns(&Game::entity().columns);
-        let game = sb.fetch_one(db).await?;
-        Ok(game)
+    pub async fn get(db: &Db, id: i64) -> Result<Option<Model>, model::Error> {
+        Ok(Entity::find_by_id(id).one(db).await?)
     }
 
-
-    pub async fn update(db: &Db, id: i64, data:GamePatch) -> Result<Game, model::Error> {
-        let sb = sqlb::update()
-            .table(Game::entity())
-            .data(data.fields())
-            .and_where_eq("id", id)
-            .returning(&Game::entity().columns);
-        let game = sb.fetch_one(db).await?;
-        Ok(game)
+    pub async fn list(db: &Db) -> Result<Vec<Model>, model::Error> {
+        Ok(Entity::find().all(db).await?)
     }
-    */
-
-    pub async fn list(db: &Db) -> Result<Vec<Game>, model::Error> {
-
-        let sb = sqlb::select().table(Game::entity()).columns(Game::columns());
-        let games = sb.fetch_all(db).await?;
-
-        Ok(games)
-    }
-
 }
 
 #[cfg(test)]
 mod tests {
+    use super::GameMac;
     use crate::model::db::init_db;
-    use super::{GameMac, GamePatch};
 
-/*
+    /*
 
-cargo watch -q -c -w src -x 'test model_game_ -- --nocapture --test-threads=1'
+    cargo watch -q -c -w src -x 'test model_game_ -- --nocapture --test-threads=1'
 
- */
+     */
     #[tokio::test]
     async fn model_game_create() -> Result<(), Box<dyn std::error::Error>> {
         let db = init_db().await?;
 
-        let new_game = GamePatch {
-            pgn: Some("1. f4".to_string()),
-        };
+        let pgn = "1. f4";
 
-        let result = GameMac::create(&db, new_game.clone()).await?;
-        println!("\n--> result {:?}", result);
+        let id = GameMac::create(&db, pgn).await?;
+        println!("\n--> id {:?}", id);
+        let game = GameMac::get(&db, id).await.unwrap();
+        assert!(game.is_some());
+        assert_eq!(game.unwrap().pgn, pgn);
 
-        assert_eq!(result.pgn, new_game.pgn.unwrap());
-  
-        Ok(())
-    }    
-    
-   /* 
-    #[tokio::test]
-    async fn model_game_list() -> Result<(), Box<dyn std::error::Error>> {
-        let db = init_db().await?;
-
-        let result = GameMac::list(&db).await?;
-        println!("\n--> result {:?}", result);
-
-        assert_eq!(2, result.len(), "number of dev seed games");
-        assert_eq!(100, result[0].id);
-        assert_eq!("1. e4 d6", result[0].pgn);
-        assert_eq!("1. d4 d5", result[1].pgn);
         Ok(())
     }
-    */
-
 }

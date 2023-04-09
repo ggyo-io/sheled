@@ -1,91 +1,61 @@
 use super::db::Db;
 use crate::model;
-use sqlb::HasFields;
-use entity::{Entity, EM};
+use sea_orm::entity::prelude::*;
+use sea_orm::*;
 
-#[derive(sqlx::FromRow, Debug, Clone, Entity)]
-pub struct User {
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "users")]
+pub struct Model {
+    #[sea_orm(primary_key)]
     pub id: i64,
     pub name: String,
+    #[sea_orm(unique, indexed)]
     pub email: String,
     pub hash: String,
 }
 
-#[derive(sqlb::Fields, Default, Debug, Clone)]
-pub struct UserPatch {
-    pub name: Option<String>,
-    pub email: Option<String>,
-    pub hash: Option<String>,
-}
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
 
 pub struct UserMac;
 
 impl UserMac {
-    pub async fn create(db: &Db, data: UserPatch) -> Result<User, model::Error>{
+    pub async fn create(db: &Db, name: &str, email: &str, hash: &str) -> Result<i64, model::Error> {
+        let user = ActiveModel {
+            name: Set(name.to_owned()),
+            email: Set(email.to_owned()),
+            hash: Set(hash.to_owned()),
+            ..Default::default()
+        };
+        let res = Entity::insert(user).exec(db).await?;
 
-        let sb = sqlb::insert()
-            .table(User::entity())
-            .data(data.fields())
-            .returning(User::columns());
-        let user = sb.fetch_one(db).await?;
+        Ok(res.last_insert_id)
+    }
+
+    pub async fn get_by_email(db: &Db, email: &str) -> Result<Option<Model>, model::Error> {
+        let user = Entity::find()
+            .filter(Column::Email.contains(email))
+            .one(db)
+            .await?;
+
         Ok(user)
     }
-
-/*
-    pub async fn get(db: &Db, id: i64) -> Result<User, model::Error> {
-        let sb = sqlb::select()
-            .table(User::entity())
-            .and_where_eq("id", id)
-            .columns(&User::entity().columns);
-        let user = sb.fetch_one(db).await?;
-        Ok(user)
-    }
-*/
-
-    pub async fn get_by_email(db: &Db, email: &str) -> Result<User, model::Error> {
-        let sb = sqlb::select()
-            .table(User::entity())
-            .and_where_eq("email", email)
-            .columns(User::columns());
-        let user = sb.fetch_one(db).await?;
-        Ok(user)
-    }
-
-/*
-    pub async fn update(db: &Db, id: i64, data:UserPatch) -> Result<User, model::Error> {
-        let sb = sqlb::update()
-            .table(User::entity())
-            .data(data.fields())
-            .and_where_eq("id", id)
-            .returning(&User::entity().columns);
-        let user = sb.fetch_one(db).await?;
-        Ok(user)
-    }
-
-
-    pub async fn list(db: &Db) -> Result<Vec<User>, model::Error> {
-
-        let sb = sqlb::select().table(User::entity()).columns(&User::entity().columns);
-        let users = sb.fetch_all(db).await?;
-
-        Ok(users)
-    }
-*/
 }
 
 #[cfg(test)]
 mod tests {
-    use rand::{distributions::Alphanumeric, Rng};
-    use crate::model::db::init_db;
-    use super::{UserMac, UserPatch};
+    use super::UserMac;
     use crate::auth::md5::hash_password;
+    use crate::model::db::init_db;
+    use rand::{distributions::Alphanumeric, Rng};
 
+    /*
 
-/*
+    cargo watch -q -c -w src -x 'test model_user_ -- --nocapture --test-threads=1'
 
-cargo watch -q -c -w src -x 'test model_user_ -- --nocapture --test-threads=1'
-
- */
+     */
     #[tokio::test]
     async fn model_user_create() -> Result<(), Box<dyn std::error::Error>> {
         let db = init_db().await?;
@@ -97,34 +67,29 @@ cargo watch -q -c -w src -x 'test model_user_ -- --nocapture --test-threads=1'
             .map(char::from)
             .collect();
 
-        let new_user = UserPatch {
-            name: Some(user.to_owned()),
-            email: Some(email.to_owned()),
-            hash: Some(hash_password("password")),
-        };
+        let hash = hash_password("password");
 
-        let result = UserMac::create(&db, new_user.clone()).await?;
+        let result = UserMac::create(&db, user, &email, &hash).await?;
         println!("\n--> result {:?}", result);
-
-        assert_eq!(result.name, new_user.clone().name.unwrap());
-        assert_eq!(result.email, new_user.clone().email.unwrap());
+        assert!(result > 0);
 
         // expected to fail due to duplicate email
-        let new_err_user = UserPatch {
-            name: Some(other_user.to_string()),
-            email: Some(email.to_string()),
-            hash: Some(hash_password("other password")),
-        };
-        let errresult = UserMac::create(&db, new_err_user.clone()).await;
+        let other_hash = hash_password("other password");
+        let errresult = UserMac::create(&db, other_user, &email, &other_hash).await;
         println!("\n--> errresult {:?}", errresult);
+        assert!(errresult.is_err());
 
-        /*
-        let existing_user = UserMac::get(&db, result.id).await?;
-        println!("\n--> existing_user {:?}", existing_user);
-        assert_eq!(existing_user.name, new_user.name.unwrap());
-        assert_eq!(existing_user.email, new_user.email.unwrap());
-        */
         Ok(())
     }
 
+    #[tokio::test]
+    async fn model_user_model() -> Result<(), Box<dyn std::error::Error>> {
+        use super::*;
+        let schema = Schema::new(DbBackend::Postgres);
+        let st = DbBackend::Postgres.build(schema.create_table_from_entity(Entity).if_not_exists());
+
+        println!("sql {:?}", st);
+
+        Ok(())
+    }
 }

@@ -1,17 +1,15 @@
-
+use futures_util::{SinkExt, StreamExt, TryFutureExt};
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use std::collections::HashMap;
-use warp::ws::{Message, WebSocket};
-use futures_util::{SinkExt, StreamExt, TryFutureExt};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use warp::ws::{Message, WebSocket};
 
-
-use crate::model::games::{GameMac, GamePatch};
 use crate::model::db::Db;
+use crate::model::games::*;
 
 /// Our global unique user id counter.
 static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
@@ -28,18 +26,17 @@ pub async fn user_connected(ws: WebSocket, db: Db, users: WebsocketUsers) {
 
     // Run time test for Db integration in WS context
     eprintln!("new chat user: {}", my_id);
-    let new_game = GamePatch {
-        pgn: Some("1. f4".to_string()),
-    };
 
-    let result = GameMac::create(&db, new_game.clone()).await.unwrap();
-    println!("\n--> result {:?}", result);
+    let new_pgn = "1. f4";
 
-    assert_eq!(result.pgn, new_game.pgn.unwrap());
+    let id = GameMac::create(&db, new_pgn).await.unwrap();
+    println!("\n--> result {:?}", id);
+    let game = GameMac::get(&db, id).await.unwrap();
+    assert!(game.is_some());
+    assert_eq!(game.unwrap().pgn, new_pgn);
 
     let result = GameMac::list(&db).await.unwrap();
     println!("\n--> result {:?}", result);
-
 
     // Split the socket into a sender and receive of messages.
     let (mut user_ws_tx, mut user_ws_rx) = ws.split();

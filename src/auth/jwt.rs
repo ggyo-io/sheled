@@ -1,17 +1,17 @@
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
-use thiserror::Error as ThisError;
-use tokio::sync::RwLock;
-use crate::model::db::Db;
-use crate::model::Error as ModelError;
-use crate::model::keys::{KeyMac, KeyPatch};
-use rand::Rng;
-use hex::FromHexError;
-use warp::Rejection;
 use super::UserCtx;
+use crate::model::db::Db;
+use crate::model::keys::KeyMac;
+use crate::model::Error as ModelError;
 use core::convert;
 use core::fmt;
 use core::ops;
+use hex::FromHexError;
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use rand::Rng;
 use std::sync::Arc;
+use thiserror::Error as ThisError;
+use tokio::sync::RwLock;
+use warp::Rejection;
 
 /// A JWT token secret.
 #[derive(Default, Clone, Copy, Eq, Hash, PartialEq)]
@@ -73,7 +73,10 @@ implement!(UpperHex, "{:02X}");
 
 pub type MasterTokenSecret = Arc<RwLock<TokenSecret>>;
 
-async fn parse_jwt(jwt: &str, secret: MasterTokenSecret) -> Result<UserCtx, jsonwebtoken::errors::Error> {
+async fn parse_jwt(
+    jwt: &str,
+    secret: MasterTokenSecret,
+) -> Result<UserCtx, jsonwebtoken::errors::Error> {
     let s = secret.read().await;
     println!("parse_jwt secret {:?} jwt {}", s, jwt);
     let decoding_key = DecodingKey::from_secret(&s.0);
@@ -84,9 +87,9 @@ async fn parse_jwt(jwt: &str, secret: MasterTokenSecret) -> Result<UserCtx, json
 
 #[derive(ThisError, Debug)]
 pub enum Error {
-//    #[error("Invalid token {0} error {1}")]
-//    InvalidToken(String, jsonwebtoken::errors::Error),
-//
+    //    #[error("Invalid token {0} error {1}")]
+    //    InvalidToken(String, jsonwebtoken::errors::Error),
+    //
     #[error(transparent)]
     HexDecodeError(#[from] FromHexError),
 
@@ -99,11 +102,11 @@ pub async fn to_utx(token: &str, secret: MasterTokenSecret) -> Result<UserCtx, R
         Ok(utx) => {
             println!("--> with_utx token: {} utx {:?}", token, &utx);
             Ok(utx)
-        },
+        }
         Err(_ex) => {
             println!("--> with_utx invalid token: {}", token);
             Err(warp::reject::not_found())
-        },
+        }
     }
 }
 
@@ -122,15 +125,15 @@ pub fn random_key() -> String {
 
 pub async fn current_key(db: &Db) -> Result<TokenSecret, Error> {
     match KeyMac::get_last(db).await {
-        Ok(k) => {
+        Ok(Some(k)) => {
             let token = hex::decode(&k.key)?.into();
             println!("\n--> found old key {:?}", k);
             Ok(token)
         }
-        Err(_e) => {
+        _ => {
             let new_key = random_key();
-            let result = KeyMac::create(db, &KeyPatch { key: Some(new_key.to_owned()) }).await?;
-            println!("\n--> create new key {:?}", result);
+            let result = KeyMac::create(db, &new_key).await?;
+            println!("\n--> create new key {} {:?}", new_key, result);
             let token = hex::decode(new_key)?.into();
 
             Ok(token)

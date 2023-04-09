@@ -1,9 +1,8 @@
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{Pool, Postgres};
-use std::fs;
-use std::path::PathBuf;
+use crate::model::*;
+use sea_orm::entity::prelude::*;
+use sea_orm::*;
 
-pub type Db = Pool<Postgres>;
+pub type Db = DatabaseConnection; // use sea orm
 
 const PG_HOST: &str = "localhost";
 const PG_DB: &str = "postgres";
@@ -15,9 +14,8 @@ const PG_APP_USER: &str = "sheled";
 const PG_APP_PASS: &str = "pwd_to_change";
 const PG_APP_MAX_CON: u32 = 5;
 
-const SQL_DIR: &str = "sql/";
-
-async fn create_database_role(pool: &Db) -> Result<(), sqlx::Error> {
+async fn create_database_role(db: &Db) -> Result<(), Error> {
+    let pool = db.get_postgres_connection_pool();
     // start a transaction
     let mut transaction = pool.begin().await?;
 
@@ -55,7 +53,7 @@ async fn create_database_role(pool: &Db) -> Result<(), sqlx::Error> {
         // create application database with the specified owner role
         // ignore create database error since not protected by transaction
         match sqlx::query(&format!(
-            "CREATE DATABASE {} WITH OWNER = {}",
+            "CREATE DATABASE {} WITH OWNER = {} ENCODING 'UTF-8'",
             PG_APP_DB, PG_APP_USER
         ))
         .execute(pool)
@@ -77,62 +75,62 @@ async fn create_database_role(pool: &Db) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-async fn new_db_pool(
+fn db_url(host: &str, db: &str, user: &str, pass: &str) -> String {
+    format!("postgres://{}:{}@{}/{}", user, pass, host, db)
+}
+
+async fn new_db_connection(
     host: &str,
     db: &str,
     user: &str,
     pass: &str,
     max_con: u32,
-) -> Result<Db, sqlx::Error> {
-    let con_string = format!("postgres://{}:{}@{}/{}", user, pass, host, db);
-    PgPoolOptions::new()
-        .max_connections(max_con)
-        .connect(&con_string)
-        .await
+) -> Result<DbConn, DbErr> {
+    let url = db_url(host, db, user, pass);
+    let mut opts = ConnectOptions::new(url);
+    opts.max_connections(max_con);
+
+    Database::connect(opts).await
 }
 
-pub async fn init_db() -> Result<Db, sqlx::Error> {
+pub async fn init_tables(db: &DbConn) -> Result<(), DbErr> {
+    let builder = db.get_database_backend();
+    let schema = Schema::new(builder);
+
+    let tables = [
+        builder.build(
+            schema
+                .create_table_from_entity(keys::Entity)
+                .if_not_exists(),
+        ),
+        builder.build(
+            schema
+                .create_table_from_entity(games::Entity)
+                .if_not_exists(),
+        ),
+        builder.build(
+            schema
+                .create_table_from_entity(users::Entity)
+                .if_not_exists(),
+        ),
+    ];
+    for t in tables {
+        db.execute(t).await.unwrap();
+    }
+    Ok(())
+}
+
+pub async fn init_db() -> Result<DbConn, Error> {
     {
-        let root_db = new_db_pool(PG_HOST, PG_DB, PG_USER, PG_PASS, 1).await?;
+        let root_db = new_db_connection(PG_HOST, PG_DB, PG_USER, PG_PASS, 1).await?;
         create_database_role(&root_db).await?;
     }
 
-    let app_db = new_db_pool(PG_HOST, PG_APP_DB, PG_APP_USER, PG_APP_PASS, 1).await?;
-    let mut paths: Vec<PathBuf> = fs::read_dir(SQL_DIR)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .collect();
-    paths.sort();
+    let db = new_db_connection(PG_HOST, PG_DB, PG_USER, PG_PASS, PG_APP_MAX_CON).await?;
 
-    for path in paths {
-        if let Some(path) = path.to_str() {
-            if path.ends_with(".sql") {
-                pexec(&app_db, path).await?
-            }
-        }
-    }
+    init_tables(&db).await?;
 
-    new_db_pool(PG_HOST, PG_APP_DB, PG_APP_USER, PG_APP_PASS, PG_APP_MAX_CON).await
-}
-
-async fn pexec(db: &Db, file: &str) -> Result<(), sqlx::Error> {
-    let content = fs::read_to_string(file).map_err(|ex| {
-        println!("Error reading {}, {}", file, ex);
-        ex
-    })?;
-
-    let sqls: Vec<&str> = content.split(';').collect();
-
-    for sql in sqls {
-        match sqlx::query(sql).execute(db).await {
-            Ok(_) => (),
-            Err(ex) => {
-                println!("Error executing sql {}, {}", sql, ex);
-                return Err(ex);
-            }
-        }
-    }
-
-    Ok(())
+    Ok(db)
 }
 
 #[cfg(test)]
@@ -149,8 +147,8 @@ mod tests {
                 tablename  = '{name}'
             );"
         );
-        let result: bool = sqlx::query_scalar(&query).fetch_one(db).await.unwrap();
-
+        let pool = db.get_postgres_connection_pool();
+        let result: bool = sqlx::query_scalar(&query).fetch_one(pool).await.unwrap();
         println!("---> '{name}' table exists {result}");
         result
     }
@@ -159,6 +157,7 @@ mod tests {
     async fn model_db_init_db() -> Result<(), Box<dyn std::error::Error>> {
         let db = init_db().await?;
 
+        assert!(table_exists(&db, "keys").await);
         assert!(table_exists(&db, "games").await);
         assert!(table_exists(&db, "users").await);
         assert!(!table_exists(&db, "lusers").await);
@@ -170,15 +169,14 @@ mod tests {
     async fn model_db_create_db_role() -> Result<(), Box<dyn std::error::Error>> {
         use crate::model::db::*;
 
-        let root_db = new_db_pool(PG_HOST, PG_DB, PG_USER, PG_PASS, 1).await?;
+        let root_db = new_db_connection(PG_HOST, PG_DB, PG_USER, PG_PASS, 1).await?;
         create_database_role(&root_db).await?;
 
         let app_db =
-            new_db_pool(PG_HOST, PG_APP_DB, PG_APP_USER, PG_APP_PASS, PG_APP_MAX_CON).await?;
+            new_db_connection(PG_HOST, PG_APP_DB, PG_APP_USER, PG_APP_PASS, PG_APP_MAX_CON).await?;
+        let pool = app_db.get_postgres_connection_pool();
 
-        let two: i32 = sqlx::query_scalar("SELECT 1 + 1;")
-            .fetch_one(&app_db)
-            .await?;
+        let two: i32 = sqlx::query_scalar("SELECT 1 + 1;").fetch_one(pool).await?;
 
         println!("Result of SELECT 1 + 1: {:?}", two);
         assert_eq!(two, 2);

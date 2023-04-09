@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
+use super::jwt::MasterTokenSecret;
+use super::{jwt, UserCtx};
 use crate::auth::md5::hash_password;
 use crate::model::db::Db;
-use crate::model::users::{UserMac, UserPatch};
-use super::{UserCtx, jwt};
-use super::jwt::MasterTokenSecret;
+use crate::model::users::UserMac;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserAuthReply {
@@ -37,22 +37,20 @@ fn token_reply(token: &str) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(with_token)
 }
 
-pub async fn signup(token_secret: MasterTokenSecret, db: Db, user: UserSignup) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn signup(
+    token_secret: MasterTokenSecret,
+    db: Db,
+    user: UserSignup,
+) -> Result<impl warp::Reply, warp::Rejection> {
     println!("-<>-<>-<>- user_signup ${:?}", user);
     let hash = hash_password(&user.password);
-    let new_user = UserPatch {
-        name: Some(user.name),
-        email: Some(user.email),
-        hash: Some(hash),
-    };
-
-    let result = UserMac::create(&db, new_user.clone()).await?;
+    let result = UserMac::create(&db, &user.name, &user.email, &hash).await?;
     println!("\n--> result {:?}", result);
 
     let claim = UserCtx {
-        id: result.id,
-        email: result.email,
-        name: result.name,
+        id: result,
+        email: user.email,
+        name: user.name,
         exp: std::u64::MAX as usize, // set exp claim to maximum value of usize
     };
     let token = jwt::from_utx(&claim, token_secret).await;
@@ -61,7 +59,11 @@ pub async fn signup(token_secret: MasterTokenSecret, db: Db, user: UserSignup) -
     token_reply(&token)
 }
 
-pub async fn login(token_secret: MasterTokenSecret, db: Db, user: UserLogin) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn login(
+    token_secret: MasterTokenSecret,
+    db: Db,
+    user: UserLogin,
+) -> Result<impl warp::Reply, warp::Rejection> {
     println!("-<>-<>-<>- user_login ${:?}", user);
     let unauthorized_token = "unauthorized";
 
@@ -71,6 +73,11 @@ pub async fn login(token_secret: MasterTokenSecret, db: Db, user: UserLogin) -> 
     }
     let result = result.unwrap();
     println!("\n--> result {:?}", result);
+
+    if result.is_none() {
+        return token_reply(unauthorized_token);
+    }
+    let result = result.unwrap();
 
     let hash = hash_password(&user.password);
     if hash != result.hash {
