@@ -8,7 +8,7 @@ use sea_orm::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub key: String,
+    pub key: Vec<u8>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -19,7 +19,7 @@ impl ActiveModelBehavior for ActiveModel {}
 pub struct KeyMac;
 
 impl KeyMac {
-    pub async fn create(db: &Db, data: &str) -> Result<i64, model::Error> {
+    pub async fn create(db: &Db, data: &[u8]) -> Result<i64, model::Error> {
         let key = ActiveModel {
             key: Set(data.to_owned()),
             ..Default::default()

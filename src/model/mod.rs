@@ -1,4 +1,3 @@
-use hex::FromHexError;
 use thiserror::Error as ThisError;
 use warp::reject::Reject;
 
@@ -17,9 +16,6 @@ pub enum Error {
 
     #[error(transparent)]
     DB(#[from] sea_orm::DbErr),
-
-    #[error(transparent)]
-    HexDecode(#[from] FromHexError),
 }
 
 // error[E0277]: the trait bound `model::Error: warp::reject::Reject` is not satisfied

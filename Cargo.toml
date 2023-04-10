@@ -16,5 +16,4 @@ jsonwebtoken = "8.3.0"
 serde = "1.0.159"
 md5 = "0.7.0"
 rand = "0.8.5"
-hex = "0.4.3"
 sea-orm = { version = "0.11.2", features = ["sqlx-postgres", "runtime-tokio", "macros", "sea-orm-internal"], default-features = false }
