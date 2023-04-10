@@ -4,16 +4,16 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.0", features = ["fs", "sync", "time", "macros", "rt-multi-thread"] }
-tokio-stream = "0.1.1"
+tokio = { version = "1.27.0", features = ["fs", "sync", "time", "macros", "rt-multi-thread"] }
+tokio-stream = "0.1.12"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 pretty_env_logger = "0.4"
-warp = "0.3.3"
+warp = "0.3.4"
 sqlx = { version = "0.6", features = [ "runtime-tokio-rustls", "postgres" ] }
 tracing-subscriber = "0.3.16"
-thiserror = "1.0.34"
-jsonwebtoken = "8.2.0"
-serde = "1.0.152"
+thiserror = "1.0.40"
+jsonwebtoken = "8.3.0"
+serde = "1.0.159"
 md5 = "0.7.0"
 rand = "0.8.5"
 hex = "0.4.3"
