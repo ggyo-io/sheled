@@ -1,111 +1,154 @@
-use futures_util::{SinkExt, StreamExt, TryFutureExt};
-use std::collections::HashMap;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
-use tokio::sync::{mpsc, RwLock};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use futures_util::StreamExt;
 use warp::ws::{Message, WebSocket};
 
+use crate::auth::UserCtx;
+use crate::chess::hub::{Handle, Message as HubMessage};
+use crate::chess::GamePreference;
 use crate::model::db::Db;
-use crate::model::games::*;
+use serde::{Deserialize, Serialize};
 
-/// Our global unique user id counter.
-static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
+pub mod rx;
+pub mod tx;
 
-/// Our state of currently connected users.
-///
-/// - Key is their id
-/// - Value is a sender of `warp::ws::Message`
-pub type WebsocketUsers = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<Message>>>>;
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub enum WsColor {
+    #[default]
+    White,
+    Black,
+}
 
-pub async fn user_connected(ws: WebSocket, db: Db, users: WebsocketUsers) {
-    // Use a counter to assign a new unique ID for this user.
-    let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
+#[derive(Serialize, Deserialize, Debug)]
+pub enum WsMessage {
+    GameRequest(GamePreference),
+    GameResponse(WsColor),
+}
 
-    // Run time test for Db integration in WS context
-    eprintln!("new chat user: {}", my_id);
-
-    let new_pgn = "1. f4";
-
-    let id = GameMac::create(&db, new_pgn).await.unwrap();
-    println!("\n--> result {:?}", id);
-    let game = GameMac::get(&db, id).await.unwrap();
-    assert!(game.is_some());
-    assert_eq!(game.unwrap().pgn, new_pgn);
-
-    let result = GameMac::list(&db).await.unwrap();
-    println!("\n--> result {:?}", result);
+pub async fn user_connected(ws: WebSocket, _db: Db, hub: Handle, utx: UserCtx) {
+    eprintln!("new ws user: {} {} {}", utx.id, &utx.name, &utx.email);
 
     // Split the socket into a sender and receive of messages.
-    let (mut user_ws_tx, mut user_ws_rx) = ws.split();
-
-    // Use an unbounded channel to handle buffering and flushing of messages
-    // to the websocket...
-    let (tx, rx) = mpsc::unbounded_channel();
-    let mut rx = UnboundedReceiverStream::new(rx);
-
-    tokio::task::spawn(async move {
-        while let Some(message) = rx.next().await {
-            user_ws_tx
-                .send(message)
-                .unwrap_or_else(|e| {
-                    eprintln!("websocket send error: {}", e);
-                })
-                .await;
-        }
-    });
-
-    // Save the sender in our list of connected users.
-    users.write().await.insert(my_id, tx);
-
-    // Return a `Future` that is basically a state machine managing
-    // this specific user's connection.
-
-    // Every time the user sends a message, broadcast it to
-    // all other users...
-    while let Some(result) = user_ws_rx.next().await {
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(e) => {
-                eprintln!("websocket error(uid={}): {}", my_id, e);
-                break;
-            }
-        };
-        user_message(my_id, msg, &users).await;
-    }
-
-    // user_ws_rx stream will keep processing as long as the user stays
-    // connected. Once they disconnect, then...
-    user_disconnected(my_id, &users).await;
+    let (user_ws_tx, user_ws_rx) = ws.split();
+    let tx_con = tx::WsHandleTx::new(user_ws_tx);
+    let rx_con = rx::WsConnRx::new(user_ws_rx, hub, tx_con, utx.id);
+    rx_con.run().await;
 }
 
-async fn user_message(my_id: usize, msg: Message, users: &WebsocketUsers) {
-    // Skip any non-Text messages...
-    let msg = if let Ok(s) = msg.to_str() {
-        s
-    } else {
-        return;
+#[cfg(test)]
+mod tests {
+
+    use futures_channel::mpsc::UnboundedSender;
+    use futures_util::{stream::SplitStream, StreamExt};
+    use http::{header::COOKIE, header::SET_COOKIE, Request};
+    use rand::{distributions::Alphanumeric, Rng};
+    use tokio::net::TcpStream;
+    use tokio_tungstenite::{
+        connect_async, tungstenite::client::IntoClientRequest, tungstenite::protocol::Message,
+        MaybeTlsStream, WebSocketStream,
     };
 
-    let new_msg = format!("<User#{}>: {}", my_id, msg);
+    use super::*;
+    use crate::auth::api::UserSignup;
 
-    // New message from this user, send it to everyone else (except same uid)...
-    for (&uid, tx) in users.read().await.iter() {
-        if my_id != uid {
-            if let Err(_disconnected) = tx.send(Message::text(new_msg.clone())) {
-                // The tx is disconnected, our `user_disconnected` code
-                // should be happening in another task, nothing more to
-                // do here.
-            }
+    #[tokio::test]
+    async fn ws_messages_json() -> Result<(), Box<dyn std::error::Error>> {
+        let messages = [
+            WsMessage::GameRequest(GamePreference::default()),
+            WsMessage::GameResponse(WsColor::default()),
+        ];
+        for msg in messages {
+            let msg = serde_json::to_string(&msg).unwrap();
+            println!("json string {}", msg);
+
+            let msg: WsMessage = serde_json::from_str(&msg)?;
+            println!("struct {:?}", msg);
         }
+        Ok(())
     }
-}
 
-async fn user_disconnected(my_id: usize, users: &WebsocketUsers) {
-    eprintln!("good bye user: {}", my_id);
+    #[tokio::test]
+    async fn ws_game_request_response() -> Result<(), Box<dyn std::error::Error>> {
+        // Connect to WS endpoint
+        let (tx_sender, mut ws_read) = ws_client().await;
 
-    // Stream closed up, so remove from the user list
-    users.write().await.remove(&my_id);
+        // Send message
+        let req = WsMessage::GameRequest(GamePreference::default());
+        tx_sender
+            .unbounded_send(Message::Text(serde_json::to_string(&req)?))
+            .unwrap();
+        println!("send {:?}", req);
+
+        // Read, parse verify response
+        let resp = ws_read.next().await.unwrap()?;
+        let resp = match resp {
+            Message::Text(resp) => serde_json::from_str(&resp)?,
+            _ => panic!("Expected text reply, got {:?}", resp),
+        };
+        println!("read {:?}", resp);
+        match resp {
+            WsMessage::GameResponse(WsColor::White) => {}
+            _ => panic!("Expected GameResponse(White)"),
+        };
+
+        Ok(())
+    }
+
+    fn rand_string(len: usize) -> String {
+        rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(len)
+            .map(char::from)
+            .collect()
+    }
+
+    async fn cookie_header_value() -> String {
+        let signup_url = "http://localhost:3030/signup";
+        let u = UserSignup {
+            name: rand_string(8),
+            email: rand_string(8),
+            password: rand_string(8),
+        };
+
+        // Send POST request to signup endpoint
+        let client = reqwest::Client::new();
+        let response = client.post(signup_url).json(&u).send().await.unwrap();
+        let header_value = response.headers().get(SET_COOKIE).unwrap();
+        let token = header_value
+            .to_str()
+            .unwrap()
+            .split("; ")
+            .next()
+            .unwrap()
+            .into();
+
+        println!("{:?}", token);
+
+        token
+    }
+
+    async fn authenticated_ws_request() -> Request<()> {
+        // Create the WebSocket HTTP request
+        let connect_addr = "ws://localhost:3030/ws";
+        let url = url::Url::parse(connect_addr).unwrap();
+        let mut request: Request<()> = url.into_client_request().unwrap();
+        let headers = request.headers_mut();
+        headers.insert(COOKIE, cookie_header_value().await.parse().unwrap());
+        println!("ws request {:?}", request);
+        request
+    }
+
+    async fn ws_client() -> (
+        UnboundedSender<Message>,
+        SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    ) {
+        let auth_ws_req = authenticated_ws_request().await;
+        let (ws_stream, _) = connect_async(auth_ws_req).await.expect("Failed to connect");
+        println!("WebSocket handshake has been successfully completed");
+        let (ws_write, ws_read) = ws_stream.split();
+
+        let (tx_sender, tx_recv) = futures_channel::mpsc::unbounded();
+        let tx_to_ws = tx_recv.map(Ok).forward(ws_write);
+        tokio::spawn(tx_to_ws);
+
+        (tx_sender, ws_read)
+    }
 }

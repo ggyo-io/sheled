@@ -6,6 +6,8 @@ pub mod games;
 pub mod keys;
 pub mod users;
 
+pub type IdType = i64;
+
 #[derive(ThisError, Debug)]
 pub enum Error {
     #[error(transparent)]

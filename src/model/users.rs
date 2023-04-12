@@ -7,7 +7,7 @@ use sea_orm::*;
 #[sea_orm(table_name = "users")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i64,
+    pub id: model::IdType,
     pub name: String,
     #[sea_orm(unique, indexed)]
     pub email: String,
@@ -22,7 +22,12 @@ impl ActiveModelBehavior for ActiveModel {}
 pub struct UserMac;
 
 impl UserMac {
-    pub async fn create(db: &Db, name: &str, email: &str, hash: &str) -> Result<i64, model::Error> {
+    pub async fn create(
+        db: &Db,
+        name: &str,
+        email: &str,
+        hash: &str,
+    ) -> Result<model::IdType, model::Error> {
         let user = ActiveModel {
             name: Set(name.to_owned()),
             email: Set(email.to_owned()),

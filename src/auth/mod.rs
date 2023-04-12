@@ -6,9 +6,9 @@ pub mod md5;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserCtx {
-    id: i64,
+    pub id: i64,
     pub email: String,
-    name: String,
+    pub name: String,
     exp: usize,
 }
 

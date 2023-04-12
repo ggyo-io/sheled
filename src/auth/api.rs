@@ -18,9 +18,9 @@ pub struct UserLogin {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserSignup {
-    name: String,
-    email: String,
-    password: String,
+    pub name: String,
+    pub email: String,
+    pub password: String,
 }
 
 fn token_reply(token: &str) -> Result<impl warp::Reply, warp::Rejection> {

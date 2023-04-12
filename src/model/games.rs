@@ -7,7 +7,7 @@ use sea_orm::*;
 #[sea_orm(table_name = "games")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i64,
+    pub id: model::IdType,
     pub pgn: String,
 }
 
@@ -16,10 +16,12 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
+#[allow(dead_code)]
 pub struct GameMac;
 
+#[allow(dead_code)]
 impl GameMac {
-    pub async fn create(db: &Db, data: &str) -> Result<i64, model::Error> {
+    pub async fn create(db: &Db, data: &str) -> Result<model::IdType, model::Error> {
         let game = ActiveModel {
             pgn: Set(data.to_owned()),
             ..Default::default()
@@ -29,7 +31,7 @@ impl GameMac {
         Ok(res.last_insert_id)
     }
 
-    pub async fn get(db: &Db, id: i64) -> Result<Option<Model>, model::Error> {
+    pub async fn get(db: &Db, id: model::IdType) -> Result<Option<Model>, model::Error> {
         Ok(Entity::find_by_id(id).one(db).await?)
     }
 
