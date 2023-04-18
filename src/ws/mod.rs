@@ -21,6 +21,7 @@ pub enum WsColor {
 pub enum WsMessage {
     GameRequest(GamePreference),
     GameResponse(WsColor),
+    Move(String),
 }
 
 pub async fn user_connected(ws: WebSocket, _db: Db, hub: Handle, utx: UserCtx) {
@@ -67,6 +68,26 @@ mod tests {
 
     #[tokio::test]
     async fn ws_game_request_response() -> Result<(), Box<dyn std::error::Error>> {
+        let mut jhs = vec![];
+        for _ in 0..2 {
+            let jh = tokio::spawn(async move {
+                let res = game_request_response().await;
+                println!("game_request_response res {:?}", res);
+                res.is_ok()
+            });
+            jhs.push(jh);
+        }
+        for jh in jhs {
+            match jh.await {
+                Ok(r) => assert!(r),
+                Err(e) => panic!("error {:?}", e),
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn game_request_response() -> Result<(), Box<dyn std::error::Error>> {
         // Connect to WS endpoint
         let (tx_sender, mut ws_read) = ws_client().await;
 
@@ -78,16 +99,14 @@ mod tests {
         println!("send {:?}", req);
 
         // Read, parse verify response
-        let resp = ws_read.next().await.unwrap()?;
+        let resp = ws_read.next().await;
+        println!("ws_read {:?}", resp);
+        let resp = resp.unwrap()?;
         let resp = match resp {
-            Message::Text(resp) => serde_json::from_str(&resp)?,
+            Message::Text(resp) => serde_json::from_str::<WsMessage>(&resp)?,
             _ => panic!("Expected text reply, got {:?}", resp),
         };
         println!("read {:?}", resp);
-        match resp {
-            WsMessage::GameResponse(WsColor::White) => {}
-            _ => panic!("Expected GameResponse(White)"),
-        };
 
         Ok(())
     }

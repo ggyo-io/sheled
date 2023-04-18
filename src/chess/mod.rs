@@ -1,5 +1,5 @@
 pub mod hub;
-pub mod mainline;
+pub mod uci;
 
 use serde::{Deserialize, Serialize};
 

@@ -27,6 +27,7 @@ impl WsConnRx {
         }
     }
 
+    // forward messages from WebSocket to Hub
     async fn handle_message(&self, msg: WsMessage) {
         match msg {
             WsMessage::GameRequest(msg) => {
@@ -37,6 +38,11 @@ impl WsConnRx {
                     respond_to,
                     uid,
                 };
+                self.hub.send(msg).await.unwrap();
+            }
+            WsMessage::Move(uci) => {
+                let uid = self.uid;
+                let msg = HubMessage::Move { uci, uid };
                 self.hub.send(msg).await.unwrap();
             }
             _ => eprintln!("WsConnRx::handle_message() unexpected msg: {:?}", msg),
