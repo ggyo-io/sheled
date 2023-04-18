@@ -163,7 +163,7 @@ impl Hub {
             }
         };
         let game = &mut live_game.game;
-        match game.make_move(&uci) {
+        match game.make_move(uci) {
             Ok(_) => println!("HUB move uci {}, success", uci),
             Err(e) => println!("HUB move uci {}, make move error {:?}", uci, e),
         }
